@@ -143,16 +143,15 @@ module.exports = [
         bg: "mist",
         kicker: "About TJ Specialty",
         h2: "Experience, dedication and integrity",
-        img: "about-team",
-        media: "natural",
-        alt: "The Kleinschmidt family — three generations of TJ Specialty Construction",
+        img: "exteriors-6",
+        alt: "Custom home in the Brainerd Lakes area built by TJ Specialty Construction",
         html:
-          "<p>TJ Specialty Construction has been family-owned and operated since 1985, when Jim Kleinschmidt " +
-          "started the company with his wife, Sherry, and son, Kevin. What began as a small home-based business " +
-          "has grown into a thriving company with several dedicated and talented employees.</p>" +
+          "<p>TJ Specialty Construction has been building in the Brainerd Lakes area since 1985, when Jim " +
+          "Kleinschmidt founded the company alongside his wife, Sherry, and son, Kevin. Four decades on, it " +
+          "remains family-owned and operated.</p>" +
           "<p>In our experience, construction is made up of two processes: first, building your project, and " +
-          "secondly, building relationships during the project. Our dedication to client satisfaction — and to " +
-          "projects completed on schedule and on budget — explains why so many new customers come from referrals.</p>",
+          "secondly, building relationships during the project. You deal directly with the owner throughout — " +
+          "which is why so many new customers come from referrals.</p>",
         button: { label: "Read Our Story", href: "about-us" },
       },
       {
@@ -206,20 +205,19 @@ module.exports = [
       {
         type: "split",
         kicker: "Our Story",
-        h2: "Three generations, one standard",
-        img: "about-team",
-        media: "natural",
-        alt: "Jim, Jayme and Kevin Kleinschmidt of TJ Specialty Construction",
+        h2: "Building here since 1985",
+        img: "newhome-3",
+        alt: "Open great room with stone fireplace built by TJ Specialty Construction",
         html:
-          "<p>TJ Specialty Construction has been family-owned and operated since 1985. Jim Kleinschmidt started " +
-          "the company in 1985 with his wife, Sherry, and son, Kevin. What started as a small home-based business " +
-          "has grown into a thriving company with several dedicated and talented employees.</p>" +
+          "<p>TJ Specialty Construction was founded in 1985 by Jim Kleinschmidt, alongside his wife, Sherry, and " +
+          "son, Kevin. What started as a small home-based business has spent four decades building throughout the " +
+          "Brainerd Lakes area — and it remains family-owned and operated today, under Kevin Kleinschmidt.</p>" +
           "<p>We are proud members of the Mid-Minnesota Builders Association, the National Association of Home " +
           "Builders, and a Home Advisor Top-Rated Elite Service Provider.</p>" +
           "<p>TJ Specialty Construction is involved with our community by contributing to local charities, " +
           "sponsoring local events, and supporting local subcontractors and businesses.</p>" +
-          "<p>Together, our team has constructed a wide variety of projects through the years, often hearing that " +
-          "we have fulfilled our goal to exceed our clients' expectations.</p>",
+          "<p>Over the years we have constructed a wide variety of projects, often hearing that we have fulfilled " +
+          "our goal to exceed our clients' expectations.</p>",
       },
       {
         type: "prose",
@@ -233,6 +231,9 @@ module.exports = [
           "remodeling project, it becomes a very personal thing. We work closely with you to ensure that you get " +
           "exactly what you want. Our dedication to client satisfaction, projects completed on schedule and on " +
           "budget explains why so many new customers are from referrals from past happy ones.</p>" +
+          "<p>When you hire TJ Specialty Construction, you deal directly with the owner — from the first estimate " +
+          "through to the final walkthrough. Your project doesn't get handed off to a coordinator you've never " +
+          "met, and nothing gets lost between the person who quoted the job and the people doing it.</p>" +
           "<p>Outstanding service, quality craftsmanship, and attention to detail are the keys to our success. " +
           "Our projects stand the test of time.</p>",
       },
@@ -1075,7 +1076,7 @@ module.exports = [
         kicker: "Message Sent",
         h2: "Thanks for reaching out.",
         html:
-          "<p>We've received your message and someone from our team will be in touch shortly. If your enquiry is " +
+          "<p>We've received your message and will be in touch shortly. If your enquiry is " +
           `urgent, give us a call at <a href="${site.phoneHref}">${site.phone}</a>.</p>` +
           '<p><a class="btn btn--primary" href="../">Back to Home</a></p>',
       },

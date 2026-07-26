@@ -160,9 +160,9 @@ The domain currently points at Wix. To cut over:
 3. In **Settings → Pages**, set the custom domain to `www.tjspecialty.com` and tick
    **Enforce HTTPS** once the certificate is issued (usually under an hour).
 
-Old Wix URLs that no longer exist (`/blog-1`, `/blank`, `/post`, `/fullscreen-page`)
-are served as redirect stubs pointing at the homepage, so existing links and search
-results keep working.
+Retired URLs are served as redirect stubs so existing links and search results keep
+working: `/blog-1`, `/blank`, `/post` and `/fullscreen-page` point at the homepage,
+and the old job postings `/carpenter` and `/foreman` point at `/careers`.
 
 ---
 

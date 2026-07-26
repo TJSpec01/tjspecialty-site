@@ -203,11 +203,9 @@ module.exports = [
         sub: "Family-owned and operated in the Brainerd Lakes area since 1985.",
       },
       {
-        type: "split",
+        type: "prose",
         kicker: "Our Story",
         h2: "Building here since 1985",
-        img: "newhome-3",
-        alt: "Open great room with stone fireplace built by TJ Specialty Construction",
         html:
           "<p>TJ Specialty Construction was founded in 1985 by Jim Kleinschmidt, alongside his wife, Sherry, and " +
           "son, Kevin. What started as a small home-based business has spent four decades building throughout the " +
@@ -810,156 +808,32 @@ module.exports = [
     slug: "careers",
     title: "Careers | TJ Specialty Construction | Brainerd, MN",
     description:
-      "Join a crew that will appreciate you. TJ Specialty Construction is hiring experienced carpenters and " +
-      "foremen for steady, full-time, year-round work in the Brainerd Lakes area.",
+      "TJ Specialty Construction is always interested in hearing from experienced carpenters in the Brainerd " +
+      "Lakes area. Send us your details and we'll be in touch when work comes up.",
     ogImage: "careers-hero",
     blocks: [
       {
         type: "hero",
         img: "careers-hero",
         kicker: "Careers",
-        h1: "Join a crew that will appreciate you",
+        h1: "Always interested in good carpenters",
         sub:
-          "Steady, full-time, year-round work in the Brainerd Lakes area — with competitive pay, real benefits and " +
-          "room to advance.",
-        buttons: [{ label: "Apply Now", href: "careers#apply" }],
+          "If you take pride in your work and know your way around the Brainerd Lakes area, we'd like to hear " +
+          "from you.",
+        buttons: [{ label: "Get in Touch", href: "careers#apply" }],
       },
       {
-        type: "cards",
-        kicker: "Open Positions",
-        h2: "Career opportunities",
-        items: [
-          {
-            href: "carpenter",
-            img: "card-newhome",
-            title: "Carpenter",
-            text: "Full-time, experienced carpenter. Framing and finish carpentry, $17–$35/hour plus a $1,000 hiring bonus.",
-            more: "View position",
-          },
-          {
-            href: "foreman",
-            img: "card-exteriors",
-            title: "Construction Crew Foreman",
-            text: "Lead and manage crews of 4–6 carpenters on residential and light commercial projects.",
-            more: "View position",
-          },
-        ],
+        type: "prose",
+        html:
+          "<p>TJ Specialty Construction has been building custom homes, remodels and commercial spaces in the " +
+          "Brainerd Lakes area since 1985. We work alongside experienced carpenters and a network of trusted " +
+          "local subcontractors who take the job seriously and finish it properly.</p>" +
+          "<p>We don't always have something open, but we keep good people in mind. If you have solid hands-on " +
+          "carpentry experience, fill in the form below and we'll be in touch when the right work comes up.</p>",
       },
       {
         type: "raw",
         html: careersForm(),
-      },
-    ],
-  },
-
-  /* ------------------------------------------------------------- CARPENTER */
-  {
-    slug: "carpenter",
-    title: "Carpenter | Careers | TJ Specialty Construction | Brainerd, MN",
-    description:
-      "Full-time experienced carpenter wanted in the Brainerd Lakes area. $17–$35/hour, $1,000 hiring bonus, " +
-      "401K matching, vision and dental insurance, holiday, vacation and sick pay.",
-    ogImage: "careers-hero",
-    blocks: [
-      {
-        type: "hero",
-        img: "careers-hero",
-        kicker: "Now Hiring",
-        h1: "Full-Time, Experienced Carpenter",
-        sub: "Join a crew that will appreciate YOU.",
-        buttons: [{ label: "Apply Now", href: "careers#apply" }],
-      },
-      {
-        type: "prose",
-        html:
-          '<p class="lede">We are seeking experienced, motivated carpenters for our busy, well-established ' +
-          "construction company. Join our fast-paced, positive work environment. Position includes framing and " +
-          "finish carpentry for residential and light commercial new construction and remodeling.</p>" +
-          "<h2>Benefits include</h2>" +
-          "<ul>" +
-          "<li>Very competitive hourly pay ($17&ndash;$35/hour)</li>" +
-          "<li>$1,000.00 hiring bonus, plus incentive bonuses and opportunities for advancement</li>" +
-          "<li>Steady, full-time, year-round work in the Brainerd Lakes area</li>" +
-          "<li>Holiday, vacation, and sick pay</li>" +
-          "<li>401K matching</li>" +
-          "<li>Vision and dental insurance</li>" +
-          "</ul>" +
-          "<h2>Requirements for this position</h2>" +
-          "<ul>" +
-          "<li>A minimum of two years of proven, hands-on carpentry experience</li>" +
-          "<li>Excellent understanding of carpentry techniques and methods of installation and construction</li>" +
-          "<li>Tool belt and basic carpentry tools</li>" +
-          "<li>Proficient in using electrical and manual equipment and measurement tools</li>" +
-          "<li>Ability to read blueprints</li>" +
-          "<li>Willingness to follow safety guidelines</li>" +
-          "<li>Positive, cooperative attitude</li>" +
-          "<li>Basic math and English skills</li>" +
-          "<li>Good physical condition and endurance, with ability to lift and climb</li>" +
-          "<li>Have valid driver's license and reliable transportation</li>" +
-          "<li>Pass drug screening and criminal background check</li>" +
-          "</ul>",
-      },
-      {
-        type: "ctaBand",
-        h2: "Ready to apply?",
-        text: "Complete the online employment application — it takes about ten minutes.",
-        buttons: [
-          { label: "Apply Now", href: "careers#apply" },
-          { label: "Call " + site.phone, href: site.phoneHref },
-        ],
-      },
-    ],
-  },
-
-  /* --------------------------------------------------------------- FOREMAN */
-  {
-    slug: "foreman",
-    title: "Construction Crew Foreman | Careers | TJ Specialty Construction | Brainerd, MN",
-    description:
-      "Experienced construction crew foreman wanted in the Brainerd Lakes area. Lead crews of 4–6 carpenters on " +
-      "residential and light commercial new construction and remodeling.",
-    ogImage: "careers-hero",
-    blocks: [
-      {
-        type: "hero",
-        img: "careers-hero",
-        kicker: "Now Hiring",
-        h1: "Construction Crew Foreman",
-        sub: "Play a key role in our daily operations.",
-        buttons: [{ label: "Apply Now", href: "careers#apply" }],
-      },
-      {
-        type: "prose",
-        html:
-          '<p class="lede">We are seeking experienced, motivated foremen to lead and manage crews of 4&ndash;6 ' +
-          "carpenters in framing and finish carpentry for residential and light commercial new construction and " +
-          "remodeling.</p>" +
-          "<h2>Benefits include</h2>" +
-          "<ul>" +
-          "<li>Very competitive pay</li>" +
-          "<li>Hiring bonus, plus incentive bonuses and opportunities for advancement</li>" +
-          "<li>Steady, full-time, year-round work in the Brainerd Lakes area</li>" +
-          "<li>Holiday, vacation, and sick pay</li>" +
-          "<li>Vision and dental insurance</li>" +
-          "</ul>" +
-          "<h2>Requirements for this position</h2>" +
-          "<ul>" +
-          "<li>At least 3 years experience managing a construction site and/or leading a construction crew</li>" +
-          "<li>Working knowledge of all phases of residential and light commercial construction processes and procedures</li>" +
-          "<li>Strong leadership qualities and high standard of integrity and reliability</li>" +
-          "<li>Communicating with, and coordinating jobs with the project manager</li>" +
-          "<li>Ensuring safety standards are met and enforced on the job site</li>" +
-          "<li>Pass drug screening and criminal background check</li>" +
-          "</ul>",
-      },
-      {
-        type: "ctaBand",
-        h2: "Ready to apply?",
-        text: "Complete the online employment application — it takes about ten minutes.",
-        buttons: [
-          { label: "Apply Now", href: "careers#apply" },
-          { label: "Call " + site.phone, href: site.phoneHref },
-        ],
       },
     ],
   },
@@ -1223,7 +1097,7 @@ function careersForm() {
       <div class="wrap-narrow">
         <div class="section-head">
           <p class="kicker">Online Employment Application</p>
-          <h2>Apply to join the crew</h2>
+          <h2>Tell us about yourself</h2>
           <p class="lede">Fields marked <span class="req">*</span> are required. Your application goes straight to
           our office — we'll be in touch.</p>
         </div>
@@ -1234,13 +1108,8 @@ function careersForm() {
           <div class="form-block">
             <h3>Position</h3>
             <div class="field">
-              <label for="a-position">Position applying for <span class="req">*</span></label>
-              <select id="a-position" name="Position applying for" required>
-                <option value="">Please select&hellip;</option>
-                <option>Carpenter</option>
-                <option>Construction Crew Foreman</option>
-                <option>Other</option>
-              </select>
+              <label for="a-position">Type of work you're looking for <span class="req">*</span></label>
+              <input id="a-position" name="Type of work" type="text" required placeholder="e.g. framing and finish carpentry">
             </div>
             <div class="field-row">
               <div class="field"><label for="a-date">Date available</label><input id="a-date" name="Date available" type="date"></div>

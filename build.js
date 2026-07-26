@@ -16,6 +16,9 @@ const REDIRECTS = {
   blank: "/",
   "fullscreen-page": "/",
   post: "/",
+  // Retired job postings — the careers page now takes general enquiries.
+  carpenter: "/careers",
+  foreman: "/careers",
 };
 
 function write(relPath, contents) {

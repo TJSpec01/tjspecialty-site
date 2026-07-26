@@ -53,15 +53,7 @@ module.exports = {
     },
     { label: "Projects", slug: "kavanaugh-project" },
     { label: "Financing", slug: "financing" },
-    {
-      label: "Careers",
-      slug: "careers",
-      children: [
-        ["careers", "Apply Now"],
-        ["carpenter", "Carpenter"],
-        ["foreman", "Foreman"],
-      ],
-    },
+    { label: "Careers", slug: "careers" },
     { label: "Contact", slug: "contact-us" },
   ],
 };

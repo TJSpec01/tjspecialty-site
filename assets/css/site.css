@@ -341,6 +341,10 @@ body.nav-open .nav-toggle span::after { transform: translateY(-7px) rotate(-45de
   box-shadow: var(--shadow-md);
 }
 .split--tall .split__media img { aspect-ratio: 3 / 4; }
+.split--wide .split__media img { aspect-ratio: 16 / 9; }
+/* keep the source's own proportions — for group shots and panoramas that
+   must not be cropped */
+.split--natural .split__media img { aspect-ratio: auto; }
 
 /* ---------- cards ---------- */
 .cards {

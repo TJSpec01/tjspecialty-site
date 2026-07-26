@@ -196,7 +196,9 @@ const blocks = {
   split(b, prefix) {
     return `${sectionOpen(b)}
       <div class="wrap">
-        <div class="split${b.flip ? " split--flip" : ""}${b.tall ? " split--tall" : ""}">
+        <div class="split${b.flip ? " split--flip" : ""}${b.tall ? " split--tall" : ""}${
+      b.media ? " split--" + b.media : ""
+    }">
           <div class="split__text">
             ${head(b)}
             <div class="prose">${b.html}</div>

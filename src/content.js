@@ -144,6 +144,7 @@ module.exports = [
         kicker: "About TJ Specialty",
         h2: "Experience, dedication and integrity",
         img: "about-team",
+        media: "natural",
         alt: "The Kleinschmidt family — three generations of TJ Specialty Construction",
         html:
           "<p>TJ Specialty Construction has been family-owned and operated since 1985, when Jim Kleinschmidt " +
@@ -207,6 +208,7 @@ module.exports = [
         kicker: "Our Story",
         h2: "Three generations, one standard",
         img: "about-team",
+        media: "natural",
         alt: "Jim, Jayme and Kevin Kleinschmidt of TJ Specialty Construction",
         html:
           "<p>TJ Specialty Construction has been family-owned and operated since 1985. Jim Kleinschmidt started " +

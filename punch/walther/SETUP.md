@@ -67,18 +67,18 @@ job sees the same list."*
 Once pushed, each sub gets their own link — no login, no app:
 
 ```
-https://www.tjspecialty.com/punch/walther/electrician.html
-https://www.tjspecialty.com/punch/walther/plumber.html
-https://www.tjspecialty.com/punch/walther/glass.html
-https://www.tjspecialty.com/punch/walther/painter.html
-https://www.tjspecialty.com/punch/walther/tile.html
-https://www.tjspecialty.com/punch/walther/tjsc.html
+https://tjspec01.github.io/tjspecialty-site/punch/walther/electrician.html
+https://tjspec01.github.io/tjspecialty-site/punch/walther/plumber.html
+https://tjspec01.github.io/tjspecialty-site/punch/walther/glass.html
+https://tjspec01.github.io/tjspecialty-site/punch/walther/painter.html
+https://tjspec01.github.io/tjspecialty-site/punch/walther/tile.html
+https://tjspec01.github.io/tjspecialty-site/punch/walther/tjsc.html
 ```
 
 Yours is the master:
 
 ```
-https://www.tjspecialty.com/punch/walther/
+https://tjspec01.github.io/tjspecialty-site/punch/walther/
 ```
 
 Text the link. It opens in their phone browser and works like an app.

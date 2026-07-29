@@ -1,4 +1,4 @@
-# Walther Punch List — setup
+# Walther Punch List
 
 Live checklist for the Walther job. One page per trade; every check writes
 straight to the master list with a date/time stamp.
@@ -13,9 +13,12 @@ straight to the master list with a date/time stamp.
   tile.html           Royal Floors
   tjsc.html           TJ Specialty, in-house
   punchlist.js        items + all logic   ← edit items here
-  punchlist.css       styling
-  firebase-config.js  ← THE ONLY FILE YOU MUST EDIT TO GO LIVE
+  punchlist.css       styling (uses the site's brand tokens)
+  firebase-config.js  project keys — already filled in
   gen.js              regenerates the HTML shells (node gen.js)
+/punch/firebase/
+  firestore.rules     security rules
+  firebase.json       deploy config
 ```
 
 These pages are **not** part of `build.js` and won't be touched when you
@@ -24,92 +27,78 @@ so Google won't list them.
 
 ---
 
-## 1. Turn on syncing (10 minutes, one time)
+## Syncing is already on
 
-Until you do this the pages run in **local mode** — they work, but each
-person's checkmarks stay on their own phone. An amber bar at the top says so.
+Firebase project **`tjsc-punchlists`** ("TJ Specialty Punch Lists") is live —
+Firestore database created, rules published, keys in `firebase-config.js`.
+Nothing to set up.
 
-1. Go to **console.firebase.google.com** → **Add project**. Name it anything
-   (`tjsc-punchlists`). You can skip Google Analytics.
-2. Left sidebar → **Build → Firestore Database → Create database**.
-   Pick **Start in production mode**, choose the `nam5 (us-central)` location.
-3. Gear icon → **Project settings** → scroll to **Your apps** → click the
-   **`</>`** (web) icon → give it a nickname → **Register app**.
-4. It shows you a `firebaseConfig = { ... }` block. Copy the six values into
-   `firebase-config.js`, replacing every `PASTE...` placeholder.
-5. Back in Firestore → **Rules** tab → replace what's there with:
+Console: https://console.firebase.google.com/project/tjsc-punchlists
 
-   ```
-   rules_version = '2';
-   service cloud.firestore {
-     match /databases/{database}/documents {
-       match /punchlists/{job} {
-         allow read, write: if true;
-       }
-     }
-   }
-   ```
+A green bar at the top of each page reads *"Live — everyone on this job sees
+the same list."* If it's amber or red, that device has no connection; checks
+save locally and it says so plainly.
 
-   Click **Publish**. This opens *only* the `punchlists` collection — nothing
-   else in the project is reachable.
-6. `git add -A && git commit -m "Punch list live" && git push`
+**Cost:** a few hundred reads/writes a month against a free tier of 50,000
+reads and 20,000 writes per *day*. No billing account, no card. You will not
+be billed.
 
-Reload a page. The bar at the top should turn green: *"Live — everyone on this
-job sees the same list."*
+**If you ever change the rules:**
 
-**Cost:** this uses a few hundred reads/writes a month. Firebase's free tier is
-50,000 reads and 20,000 writes per day. You will not be billed.
+```bash
+cd punch/firebase
+firebase deploy --only firestore:rules --project tjsc-punchlists
+```
 
 ---
 
-## 2. Send the links
-
-Once pushed, each sub gets their own link — no login, no app:
+## The links
 
 ```
-https://tjspec01.github.io/tjspecialty-site/punch/walther/electrician.html
-https://tjspec01.github.io/tjspecialty-site/punch/walther/plumber.html
-https://tjspec01.github.io/tjspecialty-site/punch/walther/glass.html
-https://tjspec01.github.io/tjspecialty-site/punch/walther/painter.html
-https://tjspec01.github.io/tjspecialty-site/punch/walther/tile.html
-https://tjspec01.github.io/tjspecialty-site/punch/walther/tjsc.html
-```
-
-Yours is the master:
-
-```
+Master (yours)
 https://tjspec01.github.io/tjspecialty-site/punch/walther/
+
+Electrician   .../punch/walther/electrician.html
+Plumber       .../punch/walther/plumber.html
+Glass         .../punch/walther/glass.html
+Painter       .../punch/walther/painter.html
+Tile          .../punch/walther/tile.html
+In-house      .../punch/walther/tjsc.html
 ```
+
+> **Note:** these are the GitHub Pages URLs. www.tjspecialty.com still points
+> at Wix, so `/punch/` 404s there. Once you cut DNS over to Pages, swap the
+> host in these links and they'll work unchanged.
 
 Text the link. It opens in their phone browser and works like an app.
 
-**Anyone with a link can check items off.** There's no password. That's
-deliberate — a sub won't create an account. Don't put anything confidential in
-the notes fields, and don't post these links publicly.
+**Anyone with a link can check items off.** There's no password — deliberate,
+because a sub won't create an account. The rules scope access to the
+`punchlists` collection only; nothing else in the project is reachable with
+those keys (verified: every other path returns `PERMISSION_DENIED`). Don't post
+the links publicly and don't put anything confidential in the notes.
 
 ---
 
-## 3. How it behaves
+## How it behaves
 
-- **Check a box** → the item turns green and stamps the date/time. Your master
-  list updates within about a second, and shows who checked it.
-- **Notes** → each item has a notes box. It saves as they type (and when they
-  leave the field, close the tab, or switch apps). Notes show read-only on your
-  master list.
-- **Finalize & submit** → when a sub is done, they hit the button at the bottom.
-  It stamps a submit time and locks their list. Your master page shows
-  "submitted <date>" next to that trade.
-- **Reopen** → if something comes back, the sub (or you) hits *Reopen list*
-  on their page and it unlocks.
-- **You can check anything off yourself** from the master page — useful when
-  a sub calls it in instead of tapping it.
-- **Print** → the master page prints clean (Ctrl+P) if you need a paper copy.
+- **Check a box** → turns green, stamps the date/time. Your master updates in
+  about a second and shows who checked it.
+- **Notes** → each item has a notes box. Saves as they type, and on blur, tab
+  close, or app switch. Shows read-only on your master.
+- **Finalize & submit** → the sub taps it when done; stamps a submit time and
+  locks their list. Your master shows "submitted <date>" for that trade.
+- **Reopen** → unlocks it if something comes back.
+- **You can check anything off** from the master — for when a sub phones it in.
+- **No signal** → the page says so and keeps working on that device. Those
+  checks do *not* reach the server; re-enter them once back on service.
+- **Print** → the master prints clean (Ctrl+P).
 
 ---
 
-## 4. Adding or changing items
+## Adding or changing items
 
-Open `punchlist.js`, find the `TRADES` block at the top, edit the arrays:
+Open `punchlist.js`, find `TRADES` at the top:
 
 ```js
 plumber: {
@@ -124,16 +113,16 @@ plumber: {
 ```
 
 The first value is the id — **never reuse or renumber an existing id**, or that
-item loses its saved check and notes. Just take the next unused number.
+item loses its saved check and notes. Take the next unused number.
 
-To add a whole new trade: add a block to `TRADES`, add the same key to the
-`TRADES` object in `gen.js`, run `node gen.js`, commit.
+New trade: add a block to `TRADES`, add the same key to `TRADES` in `gen.js`,
+run `node gen.js`, commit.
 
 ---
 
-## 5. Starting a new job
+## Starting a new job
 
 Copy the `walther` folder to `/punch/<jobname>/`, change `window.PUNCH_JOB_ID`
-at the bottom of `firebase-config.js` to that job's name, and replace the items
+at the bottom of `firebase-config.js` to that job name, and replace the items
 in `punchlist.js`. Each job gets its own Firestore document — they don't
-collide.
+collide, and the same Firebase project serves all of them.

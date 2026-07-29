@@ -11,13 +11,11 @@ const TRADES = {
   tjsc: ["TJ Specialty Construction", "In-house"],
 };
 
-const FOOT = `  <div class="wrap">
-    <footer class="foot">
-      TJ Specialty Construction, LLC &nbsp;•&nbsp; <a href="tel:+12188298024">218-829-8024</a> &nbsp;•&nbsp;
-      <a href="mailto:kevin@tjspecialty.com">kevin@tjspecialty.com</a><br>
-      38686 Bird Haven Rd, Crosslake, MN 56442
-    </footer>
-  </div>`;
+const FOOT = `<footer class="foot">
+  TJ Specialty Construction, LLC &nbsp;•&nbsp; <a href="tel:+12188298024">218-829-8024</a> &nbsp;•&nbsp;
+  <a href="mailto:kevin@tjspecialty.com">kevin@tjspecialty.com</a><br>
+  38686 Bird Haven Rd, Crosslake, MN 56442
+</footer>`;
 
 function shell({ title, eyebrow, h1, sub, back, script }) {
   return `<!DOCTYPE html>
@@ -26,12 +24,22 @@ function shell({ title, eyebrow, h1, sub, back, script }) {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
-<meta name="theme-color" content="#1f3864">
+<meta name="theme-color" content="#14161a">
 <title>${title}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="icon" href="../../assets/img/logo-small.png">
 <link rel="stylesheet" href="punchlist.css">
 <script src="firebase-config.js"></script>
 </head>
 <body>
+<div class="logobar">
+  <div class="wrap">
+    <img src="../../assets/img/logo-small.png" width="420" height="164" alt="TJ Specialty Construction, LLC">
+  </div>
+</div>
+
 <header class="top">
   <div class="wrap">
     <p class="eyebrow">${eyebrow}</p>

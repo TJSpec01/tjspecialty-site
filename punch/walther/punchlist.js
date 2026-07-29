@@ -125,10 +125,19 @@ export async function initStore(onStatus) {
     emit();
     return;
   }
+  // Show something immediately, and never leave the user staring at a blank
+  // bar if the jobsite signal is bad — the SDK load gets a hard time limit.
+  onStatus({ mode: "local", message: "Connecting…" });
+  state = readLocal();
+  emit();
+
   try {
-    const [{ initializeApp }, fs] = await Promise.all([
-      import(SDK + "firebase-app.js"),
-      import(SDK + "firebase-firestore.js"),
+    const [{ initializeApp }, fs] = await Promise.race([
+      Promise.all([
+        import(SDK + "firebase-app.js"),
+        import(SDK + "firebase-firestore.js"),
+      ]),
+      new Promise((_, rej) => setTimeout(() => rej(new Error("timeout")), 12000)),
     ]);
     const app = initializeApp(window.FIREBASE_CONFIG);
     const db = fs.getFirestore(app);
@@ -154,7 +163,10 @@ export async function initStore(onStatus) {
   } catch (e) {
     mode = "error";
     state = readLocal();
-    onStatus({ mode, message: "Firebase failed to load. Running on this device only." });
+    onStatus({
+      mode,
+      message: "No connection — your checkmarks are saving on this phone and will need to be re-entered when you're back on signal. Reload once you have service.",
+    });
     emit();
   }
 }

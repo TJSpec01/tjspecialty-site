@@ -1,0 +1,12 @@
+rules_version = '2';
+
+// Punch lists are open on purpose: subs open a texted link with no login.
+// Scope is ONLY the punchlists collection - nothing else in this project
+// is reachable with the public web key.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /punchlists/{job} {
+      allow read, write: if true;
+    }
+  }
+}

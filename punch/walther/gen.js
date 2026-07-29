@@ -61,17 +61,34 @@ ${script}
 `;
 }
 
+const INTERNAL_PAGE = "internal-9428f0a42430.html";
+
 const out = __dirname;
 
+/* ---- client-facing page (this is the link the Walthers have) ---- */
 fs.writeFileSync(
   path.join(out, "index.html"),
   shell({
-    title: "Master Punch List — Walther Residence",
+    title: "Punch List Progress — Walther Residence",
     eyebrow: "TJ Specialty Construction",
-    h1: "Walther Residence — Final Punch List",
+    h1: "Your Punch List",
     sub: "38686 Bird Haven Rd, Crosslake, MN 56442",
     back: null,
-    script: `import { renderMasterPage } from './punchlist.js';\nrenderMasterPage();`,
+    script: `import { renderClientPage } from './punchlist.js';\nrenderClientPage();`,
+  })
+);
+
+/* ---- internal page. Unguessable filename: this is Kevin's view and it
+        shows trade notes and photos. Do NOT link to it from any other page. ---- */
+fs.writeFileSync(
+  path.join(out, INTERNAL_PAGE),
+  shell({
+    title: "INTERNAL — Walther Punch List",
+    eyebrow: "TJ Specialty — Internal",
+    h1: "Walther Residence — Full Punch List",
+    sub: "38686 Bird Haven Rd, Crosslake, MN 56442  •  Trade notes and photos — not shared with the client",
+    back: null,
+    script: `import { renderInternalPage } from './punchlist.js';\nrenderInternalPage();`,
   })
 );
 
@@ -83,10 +100,11 @@ Object.entries(TRADES).forEach(([key, [name, company]]) => {
       eyebrow: "Walther Residence — Punch List",
       h1: name,
       sub: company + "  •  38686 Bird Haven Rd, Crosslake, MN 56442",
-      back: ["index.html", "← Full job list"],
+      // No backlink on purpose: subs must not learn the internal URL.
+      back: null,
       script: `import { renderTradePage } from './punchlist.js';\nrenderTradePage('${key}');`,
     })
   );
 });
 
-console.log("Generated index.html + " + Object.keys(TRADES).length + " trade pages.");
+console.log("Generated index.html (client) + " + INTERNAL_PAGE + " + " + Object.keys(TRADES).length + " trade pages.");

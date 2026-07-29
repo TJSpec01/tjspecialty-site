@@ -1,10 +1,15 @@
 /* ==========================================================================
-   Walther Residence — Final Punch List
+   Walther Residence — Punch List
    38686 Bird Haven Rd, Crosslake, MN 56442
    TJ Specialty Construction, LLC
 
-   TO ADD / CHANGE / REMOVE ITEMS: edit the TRADES object below, then commit.
-   Item ids must stay stable — changing an id orphans its saved check + notes.
+   THREE VIEWS off one dataset:
+     index.html                  client view  — read only, no notes, no photos
+     internal-<token>.html       Kevin        — everything
+     <trade>.html                each sub     — their items only
+
+   TO ADD / CHANGE / REMOVE ITEMS: edit TRADES below, then `node gen.js`.
+   Item ids must stay stable — changing an id orphans its check, notes, photos.
    ========================================================================== */
 
 export const JOB = {
@@ -79,14 +84,20 @@ export const TRADES = {
 };
 
 /* ========================================================================== */
-/*  STORAGE — Firestore when configured, otherwise this device only           */
+/*  STORAGE                                                                   */
 /* ========================================================================== */
 
 const SDK = "https://www.gstatic.com/firebasejs/11.0.2/";
 const JOB_ID = window.PUNCH_JOB_ID || "walther";
 const LOCAL_KEY = "tjsc-punch-" + JOB_ID;
+const LOCAL_PHOTOS = LOCAL_KEY + "-photos";
+
+/* Firestore caps a document at 1 MiB. Photos therefore live one-per-document
+   in a subcollection, and each is squeezed under this before upload. */
+const PHOTO_BYTES = 700000;
 
 let state = { items: {}, finalized: {} };
+let photos = {};                 // photoId -> { itemId, data, by, at }
 let listeners = [];
 let mode = "local";
 let fsApi = null;
@@ -96,39 +107,39 @@ function configured() {
   return !!(c && c.projectId && !String(c.projectId).startsWith("PASTE"));
 }
 
-function readLocal() {
+function readLocal(key, fallback) {
   try {
-    const raw = localStorage.getItem(LOCAL_KEY);
+    const raw = localStorage.getItem(key);
     if (raw) return JSON.parse(raw);
-  } catch (e) { /* private mode / blocked — fall through to memory */ }
-  return { items: {}, finalized: {} };
+  } catch (e) { /* private mode */ }
+  return fallback;
 }
 
 function writeLocal() {
-  try { localStorage.setItem(LOCAL_KEY, JSON.stringify(state)); } catch (e) { /* memory only */ }
+  try {
+    localStorage.setItem(LOCAL_KEY, JSON.stringify(state));
+    localStorage.setItem(LOCAL_PHOTOS, JSON.stringify(photos));
+  } catch (e) { /* quota or private mode — memory only */ }
 }
 
-function emit() { listeners.forEach((fn) => fn(state)); }
+function emit() { listeners.forEach((fn) => fn()); }
 
-export function onState(fn) {
-  listeners.push(fn);
-  fn(state);
-}
-
+export function onState(fn) { listeners.push(fn); fn(); }
 export function getMode() { return mode; }
 
 export async function initStore(onStatus) {
   if (!configured()) {
     mode = "local";
-    state = readLocal();
-    onStatus({ mode, message: "Local mode — checkmarks save on this device only. Add your Firebase keys to firebase-config.js to sync everyone to one live list." });
+    state = readLocal(LOCAL_KEY, { items: {}, finalized: {} });
+    photos = readLocal(LOCAL_PHOTOS, {});
+    onStatus({ mode, message: "Local mode — saving on this device only." });
     emit();
     return;
   }
-  // Show something immediately, and never leave the user staring at a blank
-  // bar if the jobsite signal is bad — the SDK load gets a hard time limit.
+
   onStatus({ mode: "local", message: "Connecting…" });
-  state = readLocal();
+  state = readLocal(LOCAL_KEY, { items: {}, finalized: {} });
+  photos = readLocal(LOCAL_PHOTOS, {});
   emit();
 
   try {
@@ -139,45 +150,47 @@ export async function initStore(onStatus) {
       ]),
       new Promise((_, rej) => setTimeout(() => rej(new Error("timeout")), 12000)),
     ]);
+
     const app = initializeApp(window.FIREBASE_CONFIG);
     const db = fs.getFirestore(app);
     const ref = fs.doc(db, "punchlists", JOB_ID);
-    fsApi = { fs, ref };
+    const photoCol = fs.collection(db, "punchlists", JOB_ID, "photos");
+    fsApi = { fs, db, ref, photoCol };
     mode = "live";
     onStatus({ mode, message: "Live — everyone on this job sees the same list." });
 
-    fs.onSnapshot(
-      ref,
-      (snap) => {
-        const d = snap.data() || {};
-        state = { items: d.items || {}, finalized: d.finalized || {} };
-        emit();
-      },
-      (err) => {
-        mode = "error";
-        onStatus({ mode, message: "Can't reach the database (" + err.code + "). Checks are saving on this device only until it reconnects." });
-        state = readLocal();
-        emit();
-      }
-    );
+    fs.onSnapshot(ref, (snap) => {
+      const d = snap.data() || {};
+      state = { items: d.items || {}, finalized: d.finalized || {} };
+      emit();
+    }, (err) => {
+      mode = "error";
+      onStatus({ mode, message: "Lost connection (" + err.code + "). Saving on this device only." });
+      emit();
+    });
+
+    fs.onSnapshot(photoCol, (snap) => {
+      const next = {};
+      snap.forEach((d) => { next[d.id] = d.data(); });
+      photos = next;
+      emit();
+    }, () => { /* photos unavailable — items still work */ });
+
   } catch (e) {
     mode = "error";
-    state = readLocal();
     onStatus({
       mode,
-      message: "No connection — your checkmarks are saving on this phone and will need to be re-entered when you're back on signal. Reload once you have service.",
+      message: "No connection — anything you enter is saving on this phone only and will need to be re-entered when you're back on signal. Reload once you have service.",
     });
     emit();
   }
 }
 
 async function push(patch) {
-  emit(); // optimistic — UI updates instantly, snapshot reconciles after
+  emit();
   if (fsApi && mode === "live") {
-    try {
-      await fsApi.fs.setDoc(fsApi.ref, patch, { merge: true });
-      return;
-    } catch (e) { /* fall through to local */ }
+    try { await fsApi.fs.setDoc(fsApi.ref, patch, { merge: true }); return; }
+    catch (e) { /* fall through to local */ }
   }
   writeLocal();
   emit();
@@ -188,13 +201,8 @@ async function push(patch) {
 export function setDone(id, done, by) {
   const prev = state.items[id] || {};
   const rec = { ...prev, done: done, notes: prev.notes || "" };
-  if (done) {
-    rec.doneAt = new Date().toISOString();
-    rec.doneBy = by;
-  } else {
-    rec.doneAt = null;
-    rec.doneBy = null;
-  }
+  if (done) { rec.doneAt = new Date().toISOString(); rec.doneBy = by; }
+  else { rec.doneAt = null; rec.doneBy = null; }
   state.items[id] = rec;
   push({ items: { [id]: rec } });
 }
@@ -212,16 +220,92 @@ export function setFinalized(tradeKey, on, by) {
   push({ finalized: { [tradeKey]: rec } });
 }
 
-/* ---------- helpers ---------- */
+function newId() {
+  if (window.crypto && crypto.randomUUID) return crypto.randomUUID().replace(/-/g, "").slice(0, 20);
+  return "p" + Date.now().toString(36) + Math.floor(Math.random() * 1e6).toString(36);
+}
+
+export async function addPhoto(itemId, dataUrl, by) {
+  const id = newId();
+  const rec = { itemId: itemId, data: dataUrl, by: by, at: new Date().toISOString() };
+  photos[id] = rec;
+  emit();
+  if (fsApi && mode === "live") {
+    try { await fsApi.fs.setDoc(fsApi.fs.doc(fsApi.photoCol, id), rec); return; }
+    catch (e) { /* fall through */ }
+  }
+  writeLocal();
+  emit();
+}
+
+export async function removePhoto(id) {
+  delete photos[id];
+  emit();
+  if (fsApi && mode === "live") {
+    try { await fsApi.fs.deleteDoc(fsApi.fs.doc(fsApi.photoCol, id)); return; }
+    catch (e) { /* fall through */ }
+  }
+  writeLocal();
+  emit();
+}
+
+/* ---------- image squeezing ---------- */
+
+async function decode(file) {
+  if (window.createImageBitmap) {
+    try { return await createImageBitmap(file, { imageOrientation: "from-image" }); }
+    catch (e) { /* fall back below */ }
+  }
+  return await new Promise((res, rej) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => { URL.revokeObjectURL(url); res(img); };
+    img.onerror = () => { URL.revokeObjectURL(url); rej(new Error("unreadable image")); };
+    img.src = url;
+  });
+}
+
+function toJpeg(bmp, maxPx, quality) {
+  let w = bmp.width, h = bmp.height;
+  const scale = Math.min(1, maxPx / Math.max(w, h));
+  w = Math.max(1, Math.round(w * scale));
+  h = Math.max(1, Math.round(h * scale));
+  const c = document.createElement("canvas");
+  c.width = w; c.height = h;
+  const ctx = c.getContext("2d");
+  ctx.fillStyle = "#fff";
+  ctx.fillRect(0, 0, w, h);
+  ctx.drawImage(bmp, 0, 0, w, h);
+  return c.toDataURL("image/jpeg", quality);
+}
+
+/* Phone photos are 3-8 MB. Step down until it fits a Firestore document. */
+export async function squeeze(file) {
+  const bmp = await decode(file);
+  const steps = [[1400, 0.72], [1100, 0.62], [900, 0.52], [700, 0.45]];
+  for (const [px, q] of steps) {
+    const out = toJpeg(bmp, px, q);
+    if (out.length <= PHOTO_BYTES) return out;
+  }
+  throw new Error("That photo is too large even after compressing. Try another shot.");
+}
+
+/* ---------- reads ---------- */
 
 export function fmt(iso) {
   if (!iso) return "";
   const d = new Date(iso);
   if (isNaN(d)) return "";
   return d.toLocaleString(undefined, {
-    month: "short", day: "numeric", year: "numeric",
-    hour: "numeric", minute: "2-digit",
+    month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit",
   });
+}
+
+export function fmtDay(iso) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (isNaN(d)) return "";
+  return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
 }
 
 export function tradeStats(key) {
@@ -233,10 +317,7 @@ export function tradeStats(key) {
 
 export function allStats() {
   let done = 0, total = 0;
-  Object.keys(TRADES).forEach((k) => {
-    const s = tradeStats(k);
-    done += s.done; total += s.total;
-  });
+  Object.keys(TRADES).forEach((k) => { const s = tradeStats(k); done += s.done; total += s.total; });
   return { done, total };
 }
 
@@ -244,22 +325,23 @@ export function getItem(id) {
   return state.items[id] || { done: false, doneAt: null, doneBy: null, notes: "" };
 }
 
-export function isFinalized(key) {
-  return !!(state.finalized && state.finalized[key]);
+export function photosFor(itemId) {
+  return Object.keys(photos)
+    .filter((id) => photos[id].itemId === itemId)
+    .map((id) => ({ id, ...photos[id] }))
+    .sort((a, b) => (a.at > b.at ? 1 : -1));
 }
 
-export function finalizedRec(key) {
-  return (state.finalized && state.finalized[key]) || null;
-}
+export function photoCount() { return Object.keys(photos).length; }
+export function isFinalized(key) { return !!(state.finalized && state.finalized[key]); }
+export function finalizedRec(key) { return (state.finalized && state.finalized[key]) || null; }
 
 export function activity(limit) {
   const out = [];
   Object.keys(TRADES).forEach((k) => {
     TRADES[k].items.forEach(([id, text]) => {
       const rec = state.items[id];
-      if (rec && rec.done && rec.doneAt) {
-        out.push({ text: text, trade: TRADES[k].name, at: rec.doneAt, by: rec.doneBy });
-      }
+      if (rec && rec.done && rec.doneAt) out.push({ text, trade: TRADES[k].name, at: rec.doneAt, by: rec.doneBy });
     });
   });
   out.sort((a, b) => (a.at < b.at ? 1 : -1));
@@ -267,7 +349,7 @@ export function activity(limit) {
 }
 
 /* ========================================================================== */
-/*  RENDERING                                                                 */
+/*  SHARED UI BITS                                                            */
 /* ========================================================================== */
 
 function el(tag, cls, text) {
@@ -289,9 +371,8 @@ function statusBanner(host) {
 function progressCard(host, label, getFn) {
   const card = el("div", "progress-card");
   const row = el("div", "progress-row");
-  const lab = el("div", "label", label);
   const cnt = el("div", "count");
-  row.append(lab, cnt);
+  row.append(el("div", "label", label), cnt);
   const bar = el("div", "bar");
   const fill = el("span");
   bar.appendChild(fill);
@@ -300,13 +381,95 @@ function progressCard(host, label, getFn) {
   return () => {
     const s = getFn();
     cnt.textContent = s.done + " of " + s.total + " complete";
-    const pct = s.total ? Math.round((s.done / s.total) * 100) : 0;
-    fill.style.width = pct + "%";
+    fill.style.width = (s.total ? Math.round((s.done / s.total) * 100) : 0) + "%";
     bar.className = "bar" + (s.total && s.done === s.total ? " done" : "");
   };
 }
 
-/* ---------- trade page ---------- */
+/* full-screen photo viewer, built once per page */
+let lightbox = null;
+function openPhoto(src) {
+  if (!lightbox) {
+    lightbox = el("div", "lightbox");
+    const img = el("img");
+    lightbox.appendChild(img);
+    lightbox.addEventListener("click", () => { lightbox.classList.remove("on"); });
+    document.body.appendChild(lightbox);
+  }
+  lightbox.querySelector("img").src = src;
+  lightbox.classList.add("on");
+}
+
+function photoStrip(itemId, opts) {
+  const wrap = el("div", "photos");
+  const strip = el("div", "thumbs");
+  wrap.appendChild(strip);
+
+  let addBtn = null, fileInput = null, err = null;
+  if (opts && opts.canAdd) {
+    err = el("div", "photo-err");
+    fileInput = document.createElement("input");
+    fileInput.type = "file";
+    fileInput.accept = "image/*";
+    fileInput.capture = "environment";
+    fileInput.className = "hidden-file";
+    fileInput.id = "ph-" + itemId;
+
+    addBtn = el("label", "addphoto", "＋ Add photo");
+    addBtn.setAttribute("for", fileInput.id);
+
+    fileInput.addEventListener("change", async () => {
+      const f = fileInput.files && fileInput.files[0];
+      fileInput.value = "";
+      if (!f) return;
+      err.textContent = "";
+      addBtn.textContent = "Working…";
+      addBtn.classList.add("busy");
+      try {
+        const data = await squeeze(f);
+        await addPhoto(itemId, data, opts.by);
+      } catch (e) {
+        err.textContent = e.message || "Could not add that photo.";
+      } finally {
+        addBtn.textContent = "＋ Add photo";
+        addBtn.classList.remove("busy");
+      }
+    });
+    wrap.append(fileInput, addBtn, err);
+  }
+
+  return {
+    node: wrap,
+    refresh(locked) {
+      const list = photosFor(itemId);
+      strip.innerHTML = "";
+      list.forEach((p) => {
+        const t = el("div", "thumb");
+        const im = el("img");
+        im.src = p.data;
+        im.alt = "Photo added " + fmt(p.at);
+        im.loading = "lazy";
+        im.addEventListener("click", () => openPhoto(p.data));
+        t.appendChild(im);
+        if (opts && opts.canRemove && !locked) {
+          const x = el("button", "thumb-x", "×");
+          x.title = "Remove this photo";
+          x.addEventListener("click", () => {
+            if (confirm("Remove this photo?")) removePhoto(p.id);
+          });
+          t.appendChild(x);
+        }
+        strip.appendChild(t);
+      });
+      strip.style.display = list.length ? "" : "none";
+      if (addBtn) addBtn.style.display = locked ? "none" : "";
+    },
+  };
+}
+
+/* ========================================================================== */
+/*  TRADE PAGE                                                                */
+/* ========================================================================== */
 
 export function renderTradePage(tradeKey) {
   const trade = TRADES[tradeKey];
@@ -357,7 +520,9 @@ export function renderTradePage(tradeKey) {
     const flag = el("div", "saved-flag");
     nw.append(nl, ta, flag);
 
-    body.append(t, stamp, nw);
+    const ph = photoStrip(id, { canAdd: true, canRemove: true, by: who });
+
+    body.append(t, stamp, nw, ph.node);
     main.append(cb, body);
     card.appendChild(main);
     list.appendChild(card);
@@ -367,9 +532,7 @@ export function renderTradePage(tradeKey) {
       setDone(id, cb.checked, who);
     });
 
-    let timer = null;
-    let dirty = false;
-
+    let timer = null, dirty = false;
     function saveNote() {
       clearTimeout(timer);
       if (!dirty) return;
@@ -378,7 +541,6 @@ export function renderTradePage(tradeKey) {
       flag.textContent = "Saved";
       setTimeout(() => { flag.textContent = ""; }, 1800);
     }
-
     ta.addEventListener("input", () => {
       dirty = true;
       flag.textContent = "";
@@ -387,10 +549,9 @@ export function renderTradePage(tradeKey) {
     });
     ta.addEventListener("blur", saveNote);
 
-    return { id, card, cb, stamp, ta, isDirty: () => dirty, flush: saveNote };
+    return { id, card, cb, stamp, ta, ph, isDirty: () => dirty, flush: saveNote };
   });
 
-  // Don't lose a note if they close the tab or switch apps mid-typing.
   const flushAll = () => rows.forEach((r) => r.flush());
   window.addEventListener("pagehide", flushAll);
   document.addEventListener("visibilitychange", () => {
@@ -419,6 +580,7 @@ export function renderTradePage(tradeKey) {
       r.stamp.textContent = rec.done && rec.doneAt ? "Completed " + fmt(rec.doneAt) : "";
       if (!r.isDirty() && r.ta.value !== (rec.notes || "")) r.ta.value = rec.notes || "";
       r.ta.disabled = locked;
+      r.ph.refresh(locked);
     });
     refreshProgress();
 
@@ -440,9 +602,11 @@ export function renderTradePage(tradeKey) {
   initStore(setBanner);
 }
 
-/* ---------- master page ---------- */
+/* ========================================================================== */
+/*  INTERNAL PAGE (Kevin) — everything                                        */
+/* ========================================================================== */
 
-export function renderMasterPage() {
+export function renderInternalPage() {
   const root = document.getElementById("app");
 
   const setBanner = statusBanner(root);
@@ -468,9 +632,8 @@ export function renderMasterPage() {
     const t = TRADES[k];
     const g = el("div", "group");
     const head = el("div", "group-head");
-    const h = el("h2", null, t.name);
     const meta = el("div", "meta");
-    head.append(h, meta);
+    head.append(el("h2", null, t.name), meta);
     g.appendChild(head);
 
     const rows = t.items.map(([id, text]) => {
@@ -487,19 +650,21 @@ export function renderMasterPage() {
       lab.setAttribute("for", "m-" + id);
       const stamp = el("div", "stamp");
       const owner = el("div", "owner");
-      const noteBox = el("div", "notes-wrap");
-      const noteLab = el("label", null, "Notes");
-      const noteRo = el("div", "notes-ro");
-      noteBox.append(noteLab, noteRo);
 
-      body.append(lab, stamp, owner, noteBox);
+      const noteBox = el("div", "notes-wrap");
+      const noteRo = el("div", "notes-ro");
+      noteBox.append(el("label", null, "Notes from the trade"), noteRo);
+
+      const ph = photoStrip(id, { canAdd: true, canRemove: true, by: "TJ Specialty" });
+
+      body.append(lab, stamp, owner, noteBox, ph.node);
       main.append(cb, body);
       card.appendChild(main);
       g.appendChild(card);
 
       cb.addEventListener("change", () => setDone(id, cb.checked, "TJ Specialty"));
 
-      return { id, card, cb, stamp, owner, noteBox, noteRo };
+      return { id, card, cb, stamp, owner, noteBox, noteRo, ph };
     });
 
     root.appendChild(g);
@@ -523,12 +688,9 @@ export function renderMasterPage() {
         r.card.className = "item" + (rec.done ? " checked" : "");
         r.stamp.textContent = rec.done && rec.doneAt ? "Completed " + fmt(rec.doneAt) : "";
         r.owner.textContent = rec.done && rec.doneBy ? "Checked off by " + rec.doneBy : "";
-        if (rec.notes) {
-          r.noteBox.style.display = "";
-          r.noteRo.textContent = rec.notes;
-        } else {
-          r.noteBox.style.display = "none";
-        }
+        if (rec.notes) { r.noteBox.style.display = ""; r.noteRo.textContent = rec.notes; }
+        else { r.noteBox.style.display = "none"; }
+        r.ph.refresh(false);
       });
     });
 
@@ -558,4 +720,77 @@ export function renderMasterPage() {
   });
 
   initStore(setBanner);
+}
+
+/* ========================================================================== */
+/*  CLIENT PAGE — read only. No notes, no photos, no controls.                */
+/* ========================================================================== */
+
+export function renderClientPage() {
+  const root = document.getElementById("app");
+
+  const intro = el("div", "client-intro");
+  intro.append(
+    el("p", null,
+      "Live status of the punch list for your home. This page updates on its own as our trades finish their work — no need to refresh."),
+    el("p", "fineprint",
+      "Something missing or not right? Reply to Kevin's email or call the office and we'll get it on the list.")
+  );
+  root.appendChild(intro);
+
+  const refreshProgress = progressCard(root, "Overall progress", () => allStats());
+
+  const groups = Object.keys(TRADES).map((k) => {
+    const t = TRADES[k];
+    const g = el("div", "group");
+    const head = el("div", "group-head");
+    const meta = el("div", "meta");
+    head.append(el("h2", null, t.name), meta);
+    g.appendChild(head);
+
+    const rows = t.items.map(([id, text]) => {
+      const card = el("div", "item ro");
+      const main = el("div", "item-main");
+      const mark = el("div", "mark");
+      const body = el("div", "item-body");
+      const lab = el("div", "item-text", text);
+      const stamp = el("div", "stamp");
+      body.append(lab, stamp);
+      main.append(mark, body);
+      card.appendChild(main);
+      g.appendChild(card);
+      return { id, card, mark, stamp };
+    });
+
+    root.appendChild(g);
+    return { key: k, meta, rows };
+  });
+
+  const done = el("div", "client-done");
+  root.appendChild(done);
+
+  onState(() => {
+    groups.forEach((grp) => {
+      const s = tradeStats(grp.key);
+      grp.meta.textContent = s.done + " of " + s.total + " complete";
+      grp.rows.forEach((r) => {
+        const rec = getItem(r.id);
+        r.card.className = "item ro" + (rec.done ? " checked" : "");
+        r.mark.textContent = rec.done ? "✓" : "";
+        r.mark.className = "mark" + (rec.done ? " on" : "");
+        r.stamp.textContent = rec.done && rec.doneAt ? "Completed " + fmtDay(rec.doneAt) : "Open";
+        r.stamp.className = "stamp" + (rec.done ? "" : " open");
+      });
+    });
+    refreshProgress();
+
+    const s = allStats();
+    done.textContent = s.total && s.done === s.total
+      ? "Everything on the punch list is complete. Thank you for your patience — Kevin will be in touch to walk it with you."
+      : "";
+    done.style.display = s.total && s.done === s.total ? "" : "none";
+  });
+
+  /* Client page reads only — a stale-connection warning would just worry them. */
+  initStore(() => {});
 }

@@ -100,8 +100,9 @@ Object.entries(TRADES).forEach(([key, [name, company]]) => {
       eyebrow: "Walther Residence — Punch List",
       h1: name,
       sub: company + "  •  38686 Bird Haven Rd, Crosslake, MN 56442",
-      // No backlink on purpose: subs must not learn the internal URL.
-      back: null,
+      // Backlink ONLY on the in-house page — that one is Kevin's, so it can
+      // reach the internal view. Outside subs must not learn that URL.
+      back: key === "tjsc" ? [INTERNAL_PAGE, "View full job list →"] : null,
       script: `import { renderTradePage } from './punchlist.js';\nrenderTradePage('${key}');`,
     })
   );

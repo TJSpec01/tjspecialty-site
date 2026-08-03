@@ -151,9 +151,17 @@ item loses its check, notes and photos. Take the next unused number.
 New trade: add a block to `TRADES`, add the same key to `TRADES` in `gen.js`,
 run `node gen.js`, commit.
 
-**Want subs to see the whole job again?** In `gen.js`, change the trade page's
-`back: null` to `back: [INTERNAL_PAGE, "← Full job list"]` and re-run it. That
-gives every sub your internal URL, which is why it's off.
+**Backlinks.** The in-house page (`tjsc.html`) has a *View full job list →*
+link to your internal page, so you can flip between your own items and the
+whole job. Outside subs deliberately have no such link — it would hand them
+your internal URL. That rule lives in `gen.js`:
+
+```js
+back: key === "tjsc" ? [INTERNAL_PAGE, "View full job list →"] : null,
+```
+
+Drop the `key === "tjsc" ?` condition if you ever decide subs should see the
+whole job too.
 
 ---
 

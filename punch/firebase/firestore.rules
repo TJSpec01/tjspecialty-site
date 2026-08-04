@@ -7,10 +7,15 @@ service cloud.firestore {
   match /databases/{database}/documents {
     match /punchlists/{job} {
       allow read, write: if true;
-    }
-    // one document per photo - Firestore caps a document at 1 MiB
-    match /punchlists/{job}/photos/{photo} {
-      allow read, write: if true;
+
+      // one document per photo - Firestore caps a document at 1 MiB
+      match /photos/{photo} {
+        allow read, write: if true;
+      }
+      // items a tech adds from the field
+      match /added/{item} {
+        allow read, write: if true;
+      }
     }
   }
 }

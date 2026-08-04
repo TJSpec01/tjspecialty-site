@@ -129,6 +129,32 @@ firebase deploy --only firestore:rules --project tjsc-punchlists
 
 ---
 
+## Items added in the field
+
+Every trade page has a **Find something else?** box at the bottom. A tech types
+a line, taps *Add to my list*, and it appears immediately on their list and on
+yours, tagged **"Added on site by <trade>"** with an amber stripe.
+
+Added items behave exactly like the fixed ones — checkbox, timestamp, notes,
+photos.
+
+**They do not reach the Walthers until you say so.** On your internal page each
+added item carries three controls:
+
+- **Show on the Walthers' page** — tick it and the item joins the client's list.
+  Until then the client's page doesn't show it and its count doesn't include it.
+- **Trade dropdown** — move it to another list. The plumber spots something
+  electrical, you reassign it and it lands on Eric's page.
+- **Delete** — removes it for good, along with its notes and photos.
+
+A tech can remove an item *they* added while their list is still open, in case
+of a typo. Once they hit Finalize, the add box and remove links disappear.
+
+The fixed list in `punchlist.js` is unaffected by any of this — added items live
+separately in Firestore, so regenerating or editing the site never disturbs them.
+
+---
+
 ## Adding or changing items
 
 Open `punchlist.js`, find `TRADES` at the top:

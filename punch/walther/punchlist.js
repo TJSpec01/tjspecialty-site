@@ -104,13 +104,15 @@ const SDK = "https://www.gstatic.com/firebasejs/11.0.2/";
 const JOB_ID = window.PUNCH_JOB_ID || "walther";
 const LOCAL_KEY = "tjsc-punch-" + JOB_ID;
 const LOCAL_PHOTOS = LOCAL_KEY + "-photos";
+const LOCAL_ADDED  = LOCAL_KEY + "-added";
 
 /* Firestore caps a document at 1 MiB. Photos therefore live one-per-document
    in a subcollection, and each is squeezed under this before upload. */
 const PHOTO_BYTES = 700000;
 
 let state = { items: {}, finalized: {} };
-let photos = {};                 // photoId -> { itemId, data, by, at }
+let photos = {};                 // photoId  -> { itemId, data, by, at }
+let added = {};                  // itemId   -> { text, trade, addedBy, addedAt, approved }
 let listeners = [];
 let mode = "local";
 let fsApi = null;
@@ -132,6 +134,7 @@ function writeLocal() {
   try {
     localStorage.setItem(LOCAL_KEY, JSON.stringify(state));
     localStorage.setItem(LOCAL_PHOTOS, JSON.stringify(photos));
+    localStorage.setItem(LOCAL_ADDED, JSON.stringify(added));
   } catch (e) { /* quota or private mode — memory only */ }
 }
 
@@ -145,6 +148,7 @@ export async function initStore(onStatus) {
     mode = "local";
     state = readLocal(LOCAL_KEY, { items: {}, finalized: {} });
     photos = readLocal(LOCAL_PHOTOS, {});
+    added = readLocal(LOCAL_ADDED, {});
     onStatus({ mode, message: "Local mode — saving on this device only." });
     emit();
     return;
@@ -153,6 +157,7 @@ export async function initStore(onStatus) {
   onStatus({ mode: "local", message: "Connecting…" });
   state = readLocal(LOCAL_KEY, { items: {}, finalized: {} });
   photos = readLocal(LOCAL_PHOTOS, {});
+  added = readLocal(LOCAL_ADDED, {});
   emit();
 
   try {
@@ -168,7 +173,8 @@ export async function initStore(onStatus) {
     const db = fs.getFirestore(app);
     const ref = fs.doc(db, "punchlists", JOB_ID);
     const photoCol = fs.collection(db, "punchlists", JOB_ID, "photos");
-    fsApi = { fs, db, ref, photoCol };
+    const addedCol = fs.collection(db, "punchlists", JOB_ID, "added");
+    fsApi = { fs, db, ref, photoCol, addedCol };
     mode = "live";
     onStatus({ mode, message: "Live — everyone on this job sees the same list." });
 
@@ -188,6 +194,13 @@ export async function initStore(onStatus) {
       photos = next;
       emit();
     }, () => { /* photos unavailable — items still work */ });
+
+    fs.onSnapshot(addedCol, (snap) => {
+      const next = {};
+      snap.forEach((d) => { next[d.id] = d.data(); });
+      added = next;
+      emit();
+    }, () => { /* added items unavailable — the fixed list still works */ });
 
   } catch (e) {
     mode = "error";
@@ -262,6 +275,75 @@ export async function removePhoto(id) {
   emit();
 }
 
+/* ---------- items added in the field ---------- */
+
+export async function addItem(tradeKey, text, by) {
+  const id = "add-" + newId().slice(0, 10);
+  const rec = {
+    text: String(text).trim(),
+    trade: tradeKey,
+    addedBy: by,
+    addedAt: new Date().toISOString(),
+    approved: false,          // stays off the client's page until Kevin approves
+  };
+  if (!rec.text) return null;
+  added[id] = rec;
+  emit();
+  if (fsApi && mode === "live") {
+    try { await fsApi.fs.setDoc(fsApi.fs.doc(fsApi.addedCol, id), rec); return id; }
+    catch (e) { /* fall through */ }
+  }
+  writeLocal();
+  emit();
+  return id;
+}
+
+export async function removeAddedItem(id) {
+  delete added[id];
+  delete state.items[id];
+  const orphans = Object.keys(photos).filter((p) => photos[p].itemId === id);
+  orphans.forEach((p) => delete photos[p]);
+  emit();
+  if (fsApi && mode === "live") {
+    try {
+      await fsApi.fs.deleteDoc(fsApi.fs.doc(fsApi.addedCol, id));
+      await Promise.all(orphans.map((p) => fsApi.fs.deleteDoc(fsApi.fs.doc(fsApi.photoCol, p))));
+      await fsApi.fs.setDoc(fsApi.ref, { items: { [id]: fsApi.fs.deleteField() } }, { merge: true });
+      return;
+    } catch (e) { /* fall through */ }
+  }
+  writeLocal();
+  emit();
+}
+
+async function patchAdded(id, patch) {
+  if (!added[id]) return;
+  added[id] = { ...added[id], ...patch };
+  emit();
+  if (fsApi && mode === "live") {
+    try { await fsApi.fs.setDoc(fsApi.fs.doc(fsApi.addedCol, id), patch, { merge: true }); return; }
+    catch (e) { /* fall through */ }
+  }
+  writeLocal();
+  emit();
+}
+
+export function setApproved(id, on) { patchAdded(id, { approved: !!on }); }
+export function setItemTrade(id, tradeKey) { patchAdded(id, { trade: tradeKey }); }
+export function addedRec(id) { return added[id] || null; }
+
+/* Every item for a trade: the fixed list first, then field additions oldest-first.
+   `approvedOnly` is what the client's page passes. */
+export function itemsForTrade(key, approvedOnly) {
+  const fixed = TRADES[key].items.map(([id, text]) => [id, text]);
+  const extra = Object.keys(added)
+    .filter((id) => added[id].trade === key)
+    .filter((id) => (approvedOnly ? added[id].approved : true))
+    .sort((a, b) => (added[a].addedAt > added[b].addedAt ? 1 : -1))
+    .map((id) => [id, added[id].text]);
+  return fixed.concat(extra);
+}
+
 /* ---------- image squeezing ---------- */
 
 async function decode(file) {
@@ -321,16 +403,19 @@ export function fmtDay(iso) {
   return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
 }
 
-export function tradeStats(key) {
-  const t = TRADES[key];
-  const total = t.items.length;
-  const done = t.items.filter(([id]) => state.items[id] && state.items[id].done).length;
+export function tradeStats(key, approvedOnly) {
+  const list = itemsForTrade(key, approvedOnly);
+  const total = list.length;
+  const done = list.filter(([id]) => state.items[id] && state.items[id].done).length;
   return { done, total, complete: total > 0 && done === total };
 }
 
-export function allStats() {
+export function allStats(approvedOnly) {
   let done = 0, total = 0;
-  Object.keys(TRADES).forEach((k) => { const s = tradeStats(k); done += s.done; total += s.total; });
+  Object.keys(TRADES).forEach((k) => {
+    const s = tradeStats(k, approvedOnly);
+    done += s.done; total += s.total;
+  });
   return { done, total };
 }
 
@@ -352,7 +437,7 @@ export function finalizedRec(key) { return (state.finalized && state.finalized[k
 export function activity(limit) {
   const out = [];
   Object.keys(TRADES).forEach((k) => {
-    TRADES[k].items.forEach(([id, text]) => {
+    itemsForTrade(k).forEach(([id, text]) => {
       const rec = state.items[id];
       if (rec && rec.done && rec.doneAt) out.push({ text, trade: TRADES[k].name, at: rec.doneAt, by: rec.doneBy });
     });
@@ -480,6 +565,29 @@ function photoStrip(itemId, opts) {
   };
 }
 
+/* ---------- list manager: rebuilds rows only when the id set changes ------- */
+
+function makeList(host, buildRow) {
+  let sig = null;
+  let rows = [];
+  return {
+    get rows() { return rows; },
+    sync(pairs) {
+      const next = pairs.map((p) => p[0]).join("|");
+      if (next !== sig) {
+        sig = next;
+        host.innerHTML = "";
+        rows = pairs.map(([id, text]) => buildRow(id, text, host));
+      } else {
+        pairs.forEach(([id, text], i) => {
+          if (rows[i] && rows[i].setText) rows[i].setText(text);
+        });
+      }
+      return rows;
+    },
+  };
+}
+
 /* ========================================================================== */
 /*  TRADE PAGE                                                                */
 /* ========================================================================== */
@@ -496,8 +604,32 @@ export function renderTradePage(tradeKey) {
   const setBanner = statusBanner(root);
   const refreshProgress = progressCard(root, "Your items", () => tradeStats(tradeKey));
 
-  const list = el("div", "group");
-  root.appendChild(list);
+  const listHost = el("div", "group");
+  root.appendChild(listHost);
+
+  /* --- add-an-item card --- */
+  const addCard = el("div", "additem-card");
+  addCard.append(el("h3", null, "Find something else?"));
+  addCard.append(el("p", null, "Add it to your list. Kevin sees it right away."));
+  const addTa = document.createElement("textarea");
+  addTa.className = "notes additem-input";
+  addTa.placeholder = "e.g. Shutoff valve under the kitchen sink is weeping";
+  addTa.rows = 2;
+  const addBtn = el("button", "btn", "Add to my list");
+  const addFlag = el("div", "saved-flag");
+  addCard.append(addTa, addBtn, addFlag);
+  root.appendChild(addCard);
+
+  addBtn.addEventListener("click", async () => {
+    const text = addTa.value.trim();
+    if (!text) { addTa.focus(); return; }
+    addBtn.disabled = true;
+    await addItem(tradeKey, text, who);
+    addTa.value = "";
+    addBtn.disabled = false;
+    addFlag.textContent = "Added";
+    setTimeout(() => { addFlag.textContent = ""; }, 2200);
+  });
 
   const lockNote = el("div", "locked-note");
   lockNote.style.display = "none";
@@ -509,7 +641,7 @@ export function renderTradePage(tradeKey) {
   finCard.append(finText, finBtn);
   root.appendChild(finCard);
 
-  const rows = trade.items.map(([id, text]) => {
+  const list = makeList(listHost, (id, text, host) => {
     const card = el("div", "item");
     const main = el("div", "item-main");
 
@@ -521,6 +653,7 @@ export function renderTradePage(tradeKey) {
     const body = el("div", "item-body");
     const t = el("label", "item-text", text);
     t.setAttribute("for", "cb-" + id);
+    const badge = el("div", "addedby");
     const stamp = el("div", "stamp");
 
     const nw = el("div", "notes-wrap");
@@ -535,10 +668,16 @@ export function renderTradePage(tradeKey) {
 
     const ph = photoStrip(id, { canAdd: true, canRemove: true, by: who });
 
-    body.append(t, stamp, nw, ph.node);
+    const rm = el("button", "linkbtn", "Remove this item");
+    rm.style.display = "none";
+    rm.addEventListener("click", () => {
+      if (confirm("Remove the item you added?\n\n" + t.textContent)) removeAddedItem(id);
+    });
+
+    body.append(t, badge, stamp, nw, ph.node, rm);
     main.append(cb, body);
     card.appendChild(main);
-    list.appendChild(card);
+    host.appendChild(card);
 
     cb.addEventListener("change", () => {
       if (isFinalized(tradeKey)) { cb.checked = !cb.checked; return; }
@@ -562,10 +701,15 @@ export function renderTradePage(tradeKey) {
     });
     ta.addEventListener("blur", saveNote);
 
-    return { id, card, cb, stamp, ta, ph, isDirty: () => dirty, flush: saveNote };
+    return {
+      id, card, cb, stamp, ta, ph, badge, rm,
+      setText(v) { t.textContent = v; },
+      isDirty: () => dirty,
+      flush: saveNote,
+    };
   });
 
-  const flushAll = () => rows.forEach((r) => r.flush());
+  const flushAll = () => list.rows.forEach((r) => r.flush());
   window.addEventListener("pagehide", flushAll);
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "hidden") flushAll();
@@ -585,17 +729,30 @@ export function renderTradePage(tradeKey) {
 
   onState(() => {
     const locked = isFinalized(tradeKey);
+    const rows = list.sync(itemsForTrade(tradeKey));
+
     rows.forEach((r) => {
       const rec = getItem(r.id);
+      const extra = addedRec(r.id);
       r.cb.checked = !!rec.done;
       r.cb.disabled = locked;
-      r.card.className = "item" + (rec.done ? " checked" : "");
+      r.card.className = "item" + (rec.done ? " checked" : "") + (extra ? " extra" : "");
       r.stamp.textContent = rec.done && rec.doneAt ? "Completed " + fmt(rec.doneAt) : "";
+      if (extra) {
+        r.badge.style.display = "";
+        r.badge.textContent = "Added on site by " + extra.addedBy + " · " + fmtDay(extra.addedAt);
+        r.rm.style.display = locked ? "none" : "";
+      } else {
+        r.badge.style.display = "none";
+        r.rm.style.display = "none";
+      }
       if (!r.isDirty() && r.ta.value !== (rec.notes || "")) r.ta.value = rec.notes || "";
       r.ta.disabled = locked;
       r.ph.refresh(locked);
     });
     refreshProgress();
+
+    addCard.style.display = locked ? "none" : "";
 
     const rec = finalizedRec(tradeKey);
     if (locked && rec) {
@@ -642,14 +799,16 @@ export function renderInternalPage() {
   });
 
   const groups = Object.keys(TRADES).map((k) => {
-    const t = TRADES[k];
     const g = el("div", "group");
     const head = el("div", "group-head");
     const meta = el("div", "meta");
-    head.append(el("h2", null, t.name), meta);
+    head.append(el("h2", null, TRADES[k].name), meta);
     g.appendChild(head);
+    const listHost = el("div");
+    g.appendChild(listHost);
+    root.appendChild(g);
 
-    const rows = t.items.map(([id, text]) => {
+    const list = makeList(listHost, (id, text, host) => {
       const card = el("div", "item");
       const main = el("div", "item-main");
 
@@ -661,6 +820,7 @@ export function renderInternalPage() {
       const body = el("div", "item-body");
       const lab = el("label", "item-text", text);
       lab.setAttribute("for", "m-" + id);
+      const badge = el("div", "addedby");
       const stamp = el("div", "stamp");
       const owner = el("div", "owner");
 
@@ -670,18 +830,42 @@ export function renderInternalPage() {
 
       const ph = photoStrip(id, { canAdd: true, canRemove: true, by: "TJ Specialty" });
 
-      body.append(lab, stamp, owner, noteBox, ph.node);
+      /* controls that only apply to field-added items */
+      const ctl = el("div", "extra-ctl");
+      const apLab = el("label", "approve");
+      const ap = document.createElement("input");
+      ap.type = "checkbox";
+      ap.className = "approve-cb";
+      apLab.append(ap, el("span", null, "Show on the Walthers' page"));
+      const sel = document.createElement("select");
+      sel.className = "reassign";
+      Object.keys(TRADES).forEach((tk) => {
+        const o = document.createElement("option");
+        o.value = tk;
+        o.textContent = TRADES[tk].name;
+        sel.appendChild(o);
+      });
+      const del = el("button", "linkbtn", "Delete");
+      ctl.append(apLab, sel, del);
+      ctl.style.display = "none";
+
+      ap.addEventListener("change", () => setApproved(id, ap.checked));
+      sel.addEventListener("change", () => setItemTrade(id, sel.value));
+      del.addEventListener("click", () => {
+        if (confirm("Delete this added item for good?\n\n" + lab.textContent)) removeAddedItem(id);
+      });
+
+      body.append(lab, badge, stamp, owner, noteBox, ph.node, ctl);
       main.append(cb, body);
       card.appendChild(main);
-      g.appendChild(card);
+      host.appendChild(card);
 
       cb.addEventListener("change", () => setDone(id, cb.checked, "TJ Specialty"));
 
-      return { id, card, cb, stamp, owner, noteBox, noteRo, ph };
+      return { id, card, cb, stamp, owner, noteBox, noteRo, ph, badge, ctl, ap, sel, setText(v) { lab.textContent = v; } };
     });
 
-    root.appendChild(g);
-    return { key: k, meta, rows };
+    return { key: k, meta, list };
   });
 
   const log = el("div", "log");
@@ -692,17 +876,30 @@ export function renderInternalPage() {
 
   onState(() => {
     groups.forEach((grp) => {
+      const rows = grp.list.sync(itemsForTrade(grp.key));
       const s = tradeStats(grp.key);
       const fin = finalizedRec(grp.key);
       grp.meta.textContent = s.done + "/" + s.total + (fin ? " · submitted " + fmt(fin.at) : "");
-      grp.rows.forEach((r) => {
+
+      rows.forEach((r) => {
         const rec = getItem(r.id);
+        const extra = addedRec(r.id);
         r.cb.checked = !!rec.done;
-        r.card.className = "item" + (rec.done ? " checked" : "");
+        r.card.className = "item" + (rec.done ? " checked" : "") + (extra ? " extra" : "");
         r.stamp.textContent = rec.done && rec.doneAt ? "Completed " + fmt(rec.doneAt) : "";
         r.owner.textContent = rec.done && rec.doneBy ? "Checked off by " + rec.doneBy : "";
         if (rec.notes) { r.noteBox.style.display = ""; r.noteRo.textContent = rec.notes; }
         else { r.noteBox.style.display = "none"; }
+        if (extra) {
+          r.badge.style.display = "";
+          r.badge.textContent = "Added on site by " + extra.addedBy + " · " + fmtDay(extra.addedAt);
+          r.ctl.style.display = "";
+          r.ap.checked = !!extra.approved;
+          if (r.sel.value !== extra.trade) r.sel.value = extra.trade;
+        } else {
+          r.badge.style.display = "none";
+          r.ctl.style.display = "none";
+        }
         r.ph.refresh(false);
       });
     });
@@ -736,7 +933,7 @@ export function renderInternalPage() {
 }
 
 /* ========================================================================== */
-/*  CLIENT PAGE — read only. No notes, no photos, no controls.                */
+/*  CLIENT PAGE — read only. Approved items only. No notes, no photos.        */
 /* ========================================================================== */
 
 export function renderClientPage() {
@@ -751,17 +948,19 @@ export function renderClientPage() {
   );
   root.appendChild(intro);
 
-  const refreshProgress = progressCard(root, "Overall progress", () => allStats());
+  const refreshProgress = progressCard(root, "Overall progress", () => allStats(true));
 
   const groups = Object.keys(TRADES).map((k) => {
-    const t = TRADES[k];
     const g = el("div", "group");
     const head = el("div", "group-head");
     const meta = el("div", "meta");
-    head.append(el("h2", null, t.name), meta);
+    head.append(el("h2", null, TRADES[k].name), meta);
     g.appendChild(head);
+    const listHost = el("div");
+    g.appendChild(listHost);
+    root.appendChild(g);
 
-    const rows = t.items.map(([id, text]) => {
+    const list = makeList(listHost, (id, text, host) => {
       const card = el("div", "item ro");
       const main = el("div", "item-main");
       const mark = el("div", "mark");
@@ -771,12 +970,11 @@ export function renderClientPage() {
       body.append(lab, stamp);
       main.append(mark, body);
       card.appendChild(main);
-      g.appendChild(card);
-      return { id, card, mark, stamp };
+      host.appendChild(card);
+      return { id, card, mark, stamp, setText(v) { lab.textContent = v; } };
     });
 
-    root.appendChild(g);
-    return { key: k, meta, rows };
+    return { key: k, group: g, meta, list };
   });
 
   const done = el("div", "client-done");
@@ -784,9 +982,12 @@ export function renderClientPage() {
 
   onState(() => {
     groups.forEach((grp) => {
-      const s = tradeStats(grp.key);
+      const rows = grp.list.sync(itemsForTrade(grp.key, true));
+      const s = tradeStats(grp.key, true);
+      /* a trade with nothing visible to the client shouldn't show an empty heading */
+      grp.group.style.display = s.total ? "" : "none";
       grp.meta.textContent = s.done + " of " + s.total + " complete";
-      grp.rows.forEach((r) => {
+      rows.forEach((r) => {
         const rec = getItem(r.id);
         r.card.className = "item ro" + (rec.done ? " checked" : "");
         r.mark.textContent = rec.done ? "✓" : "";
@@ -797,7 +998,7 @@ export function renderClientPage() {
     });
     refreshProgress();
 
-    const s = allStats();
+    const s = allStats(true);
     done.textContent = s.total && s.done === s.total
       ? "Everything on the punch list is complete. Thank you for your patience — Kevin will be in touch to walk it with you."
       : "";

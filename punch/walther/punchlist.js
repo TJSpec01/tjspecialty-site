@@ -96,6 +96,17 @@ export const TRADES = {
   },
 };
 
+/* Why an item is parked. Kept short on purpose — a tech picks one on a phone,
+   and anything more specific goes in the notes. */
+export const FOLLOWUP_REASONS = [
+  "Parts on order",
+  "Needs another trip",
+  "Waiting on a decision",
+  "Needs another trade",
+  "Not our scope",
+  "Other — see notes",
+];
+
 /* ========================================================================== */
 /*  STORAGE                                                                   */
 /* ========================================================================== */
@@ -227,8 +238,46 @@ async function push(patch) {
 export function setDone(id, done, by) {
   const prev = state.items[id] || {};
   const rec = { ...prev, done: done, notes: prev.notes || "" };
-  if (done) { rec.doneAt = new Date().toISOString(); rec.doneBy = by; }
-  else { rec.doneAt = null; rec.doneBy = null; }
+  if (done) {
+    rec.doneAt = new Date().toISOString();
+    rec.doneBy = by;
+    // finished beats parked
+    rec.followup = false;
+    rec.followupAt = null;
+    rec.followupBy = null;
+    rec.followupReason = "";
+  } else {
+    rec.doneAt = null;
+    rec.doneBy = null;
+  }
+  state.items[id] = rec;
+  push({ items: { [id]: rec } });
+}
+
+/* "We looked at it and it isn't finished." */
+export function setFollowup(id, on, reason, by) {
+  const prev = state.items[id] || {};
+  const rec = { ...prev, notes: prev.notes || "" };
+  rec.followup = !!on;
+  if (on) {
+    rec.followupAt = new Date().toISOString();
+    rec.followupBy = by;
+    rec.followupReason = reason || prev.followupReason || FOLLOWUP_REASONS[0];
+    rec.done = false;
+    rec.doneAt = null;
+    rec.doneBy = null;
+  } else {
+    rec.followupAt = null;
+    rec.followupBy = null;
+    rec.followupReason = "";
+  }
+  state.items[id] = rec;
+  push({ items: { [id]: rec } });
+}
+
+export function setFollowupReason(id, reason, by) {
+  const prev = state.items[id] || {};
+  const rec = { ...prev, followupReason: reason, followupBy: by, followupAt: new Date().toISOString() };
   state.items[id] = rec;
   push({ items: { [id]: rec } });
 }
@@ -407,20 +456,24 @@ export function tradeStats(key, approvedOnly) {
   const list = itemsForTrade(key, approvedOnly);
   const total = list.length;
   const done = list.filter(([id]) => state.items[id] && state.items[id].done).length;
-  return { done, total, complete: total > 0 && done === total };
+  const followup = list.filter(([id]) => state.items[id] && !state.items[id].done && state.items[id].followup).length;
+  return { done, followup, total, complete: total > 0 && done === total };
 }
 
 export function allStats(approvedOnly) {
-  let done = 0, total = 0;
+  let done = 0, followup = 0, total = 0;
   Object.keys(TRADES).forEach((k) => {
     const s = tradeStats(k, approvedOnly);
-    done += s.done; total += s.total;
+    done += s.done; followup += s.followup; total += s.total;
   });
-  return { done, total };
+  return { done, followup, total };
 }
 
 export function getItem(id) {
-  return state.items[id] || { done: false, doneAt: null, doneBy: null, notes: "" };
+  return state.items[id] || {
+    done: false, doneAt: null, doneBy: null, notes: "",
+    followup: false, followupAt: null, followupBy: null, followupReason: "",
+  };
 }
 
 export function photosFor(itemId) {
@@ -439,7 +492,14 @@ export function activity(limit) {
   Object.keys(TRADES).forEach((k) => {
     itemsForTrade(k).forEach(([id, text]) => {
       const rec = state.items[id];
-      if (rec && rec.done && rec.doneAt) out.push({ text, trade: TRADES[k].name, at: rec.doneAt, by: rec.doneBy });
+      if (rec && rec.done && rec.doneAt) {
+        out.push({ text, trade: TRADES[k].name, at: rec.doneAt, by: rec.doneBy, kind: "done" });
+      } else if (rec && rec.followup && rec.followupAt) {
+        out.push({
+          text, trade: TRADES[k].name, at: rec.followupAt, by: rec.followupBy,
+          kind: "followup", reason: rec.followupReason,
+        });
+      }
     });
   });
   out.sort((a, b) => (a.at < b.at ? 1 : -1));
@@ -472,14 +532,18 @@ function progressCard(host, label, getFn) {
   const cnt = el("div", "count");
   row.append(el("div", "label", label), cnt);
   const bar = el("div", "bar");
-  const fill = el("span");
-  bar.appendChild(fill);
+  const fill = el("span", "seg-done");
+  const fillF = el("span", "seg-follow");
+  bar.append(fill, fillF);
   card.append(row, bar);
   host.appendChild(card);
   return () => {
     const s = getFn();
-    cnt.textContent = s.done + " of " + s.total + " complete";
-    fill.style.width = (s.total ? Math.round((s.done / s.total) * 100) : 0) + "%";
+    const f = s.followup || 0;
+    cnt.textContent = s.done + " of " + s.total + " complete"
+      + (f ? "  ·  " + f + " needs follow-up" : "");
+    fill.style.width = (s.total ? (s.done / s.total) * 100 : 0) + "%";
+    fillF.style.width = (s.total ? (f / s.total) * 100 : 0) + "%";
     bar.className = "bar" + (s.total && s.done === s.total ? " done" : "");
   };
 }
@@ -561,6 +625,46 @@ function photoStrip(itemId, opts) {
       });
       strip.style.display = list.length ? "" : "none";
       if (addBtn) addBtn.style.display = locked ? "none" : "";
+    },
+  };
+}
+
+/* A "we looked at it, it isn't finished" toggle plus a reason picker.
+   Sits under the item text on the trade and internal pages. */
+function followupControl(id, who) {
+  const wrap = el("div", "followup");
+  const btn = el("button", "fu-btn");
+  const sel = document.createElement("select");
+  sel.className = "fu-reason";
+  FOLLOWUP_REASONS.forEach((r) => {
+    const o = document.createElement("option");
+    o.value = r; o.textContent = r;
+    sel.appendChild(o);
+  });
+  const stamp = el("div", "fu-stamp");
+  wrap.append(btn, sel, stamp);
+
+  btn.addEventListener("click", () => {
+    const rec = getItem(id);
+    setFollowup(id, !rec.followup, sel.value, who);
+  });
+  sel.addEventListener("change", () => setFollowupReason(id, sel.value, who));
+
+  return {
+    node: wrap,
+    refresh(rec, locked) {
+      const on = !!rec.followup && !rec.done;
+      btn.textContent = on ? "⚑ Needs follow-up" : "Flag for follow-up";
+      btn.className = "fu-btn" + (on ? " on" : "");
+      btn.disabled = !!locked;
+      sel.style.display = on ? "" : "none";
+      sel.disabled = !!locked;
+      if (on && rec.followupReason && sel.value !== rec.followupReason) sel.value = rec.followupReason;
+      stamp.style.display = on ? "" : "none";
+      stamp.textContent = on && rec.followupAt
+        ? "Flagged " + fmt(rec.followupAt) + (rec.followupBy ? " by " + rec.followupBy : "")
+        : "";
+      wrap.style.display = rec.done ? "none" : "";
     },
   };
 }
@@ -666,6 +770,7 @@ export function renderTradePage(tradeKey) {
     const flag = el("div", "saved-flag");
     nw.append(nl, ta, flag);
 
+    const fu = followupControl(id, who);
     const ph = photoStrip(id, { canAdd: true, canRemove: true, by: who });
 
     const rm = el("button", "linkbtn", "Remove this item");
@@ -674,7 +779,7 @@ export function renderTradePage(tradeKey) {
       if (confirm("Remove the item you added?\n\n" + t.textContent)) removeAddedItem(id);
     });
 
-    body.append(t, badge, stamp, nw, ph.node, rm);
+    body.append(t, badge, stamp, fu.node, nw, ph.node, rm);
     main.append(cb, body);
     card.appendChild(main);
     host.appendChild(card);
@@ -702,7 +807,7 @@ export function renderTradePage(tradeKey) {
     ta.addEventListener("blur", saveNote);
 
     return {
-      id, card, cb, stamp, ta, ph, badge, rm,
+      id, card, cb, stamp, ta, ph, badge, rm, fu,
       setText(v) { t.textContent = v; },
       isDirty: () => dirty,
       flush: saveNote,
@@ -736,8 +841,10 @@ export function renderTradePage(tradeKey) {
       const extra = addedRec(r.id);
       r.cb.checked = !!rec.done;
       r.cb.disabled = locked;
-      r.card.className = "item" + (rec.done ? " checked" : "") + (extra ? " extra" : "");
+      const flagged = !rec.done && !!rec.followup;
+      r.card.className = "item" + (rec.done ? " checked" : flagged ? " flagged" : "") + (extra ? " extra" : "");
       r.stamp.textContent = rec.done && rec.doneAt ? "Completed " + fmt(rec.doneAt) : "";
+      r.fu.refresh(rec, locked);
       if (extra) {
         r.badge.style.display = "";
         r.badge.textContent = "Added on site by " + extra.addedBy + " · " + fmtDay(extra.addedAt);
@@ -828,6 +935,7 @@ export function renderInternalPage() {
       const noteRo = el("div", "notes-ro");
       noteBox.append(el("label", null, "Notes from the trade"), noteRo);
 
+      const fu = followupControl(id, "TJ Specialty");
       const ph = photoStrip(id, { canAdd: true, canRemove: true, by: "TJ Specialty" });
 
       /* controls that only apply to field-added items */
@@ -855,14 +963,14 @@ export function renderInternalPage() {
         if (confirm("Delete this added item for good?\n\n" + lab.textContent)) removeAddedItem(id);
       });
 
-      body.append(lab, badge, stamp, owner, noteBox, ph.node, ctl);
+      body.append(lab, badge, stamp, owner, fu.node, noteBox, ph.node, ctl);
       main.append(cb, body);
       card.appendChild(main);
       host.appendChild(card);
 
       cb.addEventListener("change", () => setDone(id, cb.checked, "TJ Specialty"));
 
-      return { id, card, cb, stamp, owner, noteBox, noteRo, ph, badge, ctl, ap, sel, setText(v) { lab.textContent = v; } };
+      return { id, card, cb, stamp, owner, noteBox, noteRo, ph, badge, ctl, ap, sel, fu, setText(v) { lab.textContent = v; } };
     });
 
     return { key: k, meta, list };
@@ -885,9 +993,11 @@ export function renderInternalPage() {
         const rec = getItem(r.id);
         const extra = addedRec(r.id);
         r.cb.checked = !!rec.done;
-        r.card.className = "item" + (rec.done ? " checked" : "") + (extra ? " extra" : "");
+        const flagged = !rec.done && !!rec.followup;
+        r.card.className = "item" + (rec.done ? " checked" : flagged ? " flagged" : "") + (extra ? " extra" : "");
         r.stamp.textContent = rec.done && rec.doneAt ? "Completed " + fmt(rec.doneAt) : "";
         r.owner.textContent = rec.done && rec.doneBy ? "Checked off by " + rec.doneBy : "";
+        r.fu.refresh(rec, false);
         if (rec.notes) { r.noteBox.style.display = ""; r.noteRo.textContent = rec.notes; }
         else { r.noteBox.style.display = "none"; }
         if (extra) {
@@ -922,8 +1032,13 @@ export function renderInternalPage() {
     } else {
       acts.forEach((a) => {
         const li = document.createElement("li");
-        li.append(el("span", null, a.text + " — " + (a.by || a.trade)));
+        const who = a.by || a.trade;
+        li.append(el("span", null,
+          a.kind === "followup"
+            ? "⚑ " + a.text + " — " + who + " (" + (a.reason || "follow-up") + ")"
+            : a.text + " — " + who));
         li.append(el("span", "when", fmt(a.at)));
+        if (a.kind === "followup") li.className = "fu";
         logList.appendChild(li);
       });
     }
@@ -989,11 +1104,15 @@ export function renderClientPage() {
       grp.meta.textContent = s.done + " of " + s.total + " complete";
       rows.forEach((r) => {
         const rec = getItem(r.id);
-        r.card.className = "item ro" + (rec.done ? " checked" : "");
-        r.mark.textContent = rec.done ? "✓" : "";
-        r.mark.className = "mark" + (rec.done ? " on" : "");
-        r.stamp.textContent = rec.done && rec.doneAt ? "Completed " + fmtDay(rec.doneAt) : "Open";
-        r.stamp.className = "stamp" + (rec.done ? "" : " open");
+        const flagged = !rec.done && !!rec.followup;
+        r.card.className = "item ro" + (rec.done ? " checked" : flagged ? " flagged" : "");
+        r.mark.textContent = rec.done ? "✓" : flagged ? "◍" : "";
+        r.mark.className = "mark" + (rec.done ? " on" : flagged ? " part" : "");
+        /* The client sees that it is under way. The reason stays internal. */
+        r.stamp.textContent = rec.done && rec.doneAt
+          ? "Completed " + fmtDay(rec.doneAt)
+          : flagged ? "In progress" : "Open";
+        r.stamp.className = "stamp" + (rec.done ? "" : flagged ? " inprog" : " open");
       });
     });
     refreshProgress();

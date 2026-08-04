@@ -129,6 +129,36 @@ firebase deploy --only firestore:rules --project tjsc-punchlists
 
 ---
 
+## "We looked at it, it isn't finished"
+
+Every item has a **Flag for follow-up** button under it. That's the middle
+state — the tech was there, the item isn't done, and it needs something before
+it can be.
+
+Tapping it turns the item amber, stamps who flagged it and when, and shows a
+reason picker:
+
+```
+Parts on order · Needs another trip · Waiting on a decision
+Needs another trade · Not our scope · Other — see notes
+```
+
+Anything more specific goes in the notes field underneath.
+
+- **Checking the item Done clears the flag** — finished beats parked, so a
+  tech can't leave an item both flagged and complete.
+- Your progress bar splits: green for done, yellow for flagged. The count
+  reads *"3 of 9 complete · 2 need follow-up"*, so you can tell at a glance
+  what's actually stalled versus untouched.
+- Flags show in the Activity log with a ⚑ and the reason.
+
+**What the Walthers see:** a neutral **In progress** with an amber marker —
+nothing more. They can tell it's under way rather than ignored, but the reason
+stays between you and the trade. If you'd rather they see nothing until it's
+done, that's a one-line change in `renderClientPage`.
+
+---
+
 ## Items added in the field
 
 Every trade page has a **Find something else?** box at the bottom. A tech types

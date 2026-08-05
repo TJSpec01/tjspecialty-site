@@ -152,10 +152,31 @@ Anything more specific goes in the notes field underneath.
   what's actually stalled versus untouched.
 - Flags show in the Activity log with a ⚑ and the reason.
 
-**What the Walthers see:** a neutral **In progress** with an amber marker —
-nothing more. They can tell it's under way rather than ignored, but the reason
-stays between you and the trade. If you'd rather they see nothing until it's
-done, that's a one-line change in `renderClientPage`.
+### The line the owners read
+
+A flagged item opens a yellow box: **👁 What to tell the owners.** One line,
+160 characters, and the Walthers see it verbatim under the item on their page.
+
+> *Part is ordered, back Thursday to install*
+
+**There are now two text fields on a flagged item and they go to different
+people.** The box is labelled and colour-coded so nobody has to remember which:
+
+| Field | Who reads it |
+|---|---|
+| 👁 **What to tell the owners** (yellow box) | The Walthers. Verbatim. |
+| **Notes** (grey, underneath) | You only. Never leaves the internal pages. |
+
+The reason dropdown stays internal too — "Waiting on a decision" is for your
+triage, not for Barb.
+
+You can reword the owner line yourself from the internal page; the client's
+page updates within a second. Unflagging an item or checking it Done clears
+the line automatically, so a stale "back Thursday" can't sit on their page
+after the work is finished.
+
+If the owner line is left blank, the client just sees **In progress** with no
+explanation — which is the old behaviour, and still fine for something obvious.
 
 ---
 

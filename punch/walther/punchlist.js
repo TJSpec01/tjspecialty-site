@@ -246,6 +246,7 @@ export function setDone(id, done, by) {
     rec.followupAt = null;
     rec.followupBy = null;
     rec.followupReason = "";
+    rec.followupNote = "";
   } else {
     rec.doneAt = null;
     rec.doneBy = null;
@@ -270,7 +271,17 @@ export function setFollowup(id, on, reason, by) {
     rec.followupAt = null;
     rec.followupBy = null;
     rec.followupReason = "";
+    rec.followupNote = "";
   }
+  state.items[id] = rec;
+  push({ items: { [id]: rec } });
+}
+
+/* The one line the Walthers actually read. Deliberately separate from the
+   internal Notes field so a tech can't confuse the two. */
+export function setFollowupNote(id, text, by) {
+  const prev = state.items[id] || {};
+  const rec = { ...prev, followupNote: text, followupNoteBy: by, followupNoteAt: new Date().toISOString() };
   state.items[id] = rec;
   push({ items: { [id]: rec } });
 }
@@ -473,6 +484,7 @@ export function getItem(id) {
   return state.items[id] || {
     done: false, doneAt: null, doneBy: null, notes: "",
     followup: false, followupAt: null, followupBy: null, followupReason: "",
+    followupNote: "",
   };
 }
 
@@ -642,7 +654,22 @@ function followupControl(id, who) {
     sel.appendChild(o);
   });
   const stamp = el("div", "fu-stamp");
-  wrap.append(btn, sel, stamp);
+
+  /* owner-facing one-liner */
+  const box = el("div", "fu-note");
+  const lab = el("label", null, "👁  What to tell the owners");
+  lab.setAttribute("for", "fn-" + id);
+  const hint = el("div", "fu-note-hint", "The Walthers see this line on their page. Keep it plain.");
+  const inp = document.createElement("input");
+  inp.type = "text";
+  inp.id = "fn-" + id;
+  inp.className = "fu-note-input";
+  inp.maxLength = 160;
+  inp.placeholder = "e.g. Part is ordered, back Thursday to install";
+  const savedFlag = el("div", "saved-flag");
+  box.append(lab, hint, inp, savedFlag);
+
+  wrap.append(btn, sel, stamp, box);
 
   btn.addEventListener("click", () => {
     const rec = getItem(id);
@@ -650,8 +677,27 @@ function followupControl(id, who) {
   });
   sel.addEventListener("change", () => setFollowupReason(id, sel.value, who));
 
+  let timer = null, dirty = false;
+  function saveNote() {
+    clearTimeout(timer);
+    if (!dirty) return;
+    dirty = false;
+    setFollowupNote(id, inp.value, who);
+    savedFlag.textContent = "Saved";
+    setTimeout(() => { savedFlag.textContent = ""; }, 1800);
+  }
+  inp.addEventListener("input", () => {
+    dirty = true;
+    savedFlag.textContent = "";
+    clearTimeout(timer);
+    timer = setTimeout(saveNote, 600);
+  });
+  inp.addEventListener("blur", saveNote);
+  inp.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); inp.blur(); } });
+
   return {
     node: wrap,
+    flush: saveNote,
     refresh(rec, locked) {
       const on = !!rec.followup && !rec.done;
       btn.textContent = on ? "⚑ Needs follow-up" : "Flag for follow-up";
@@ -664,6 +710,9 @@ function followupControl(id, who) {
       stamp.textContent = on && rec.followupAt
         ? "Flagged " + fmt(rec.followupAt) + (rec.followupBy ? " by " + rec.followupBy : "")
         : "";
+      box.style.display = on ? "" : "none";
+      inp.disabled = !!locked;
+      if (!dirty && inp.value !== (rec.followupNote || "")) inp.value = rec.followupNote || "";
       wrap.style.display = rec.done ? "none" : "";
     },
   };
@@ -814,7 +863,7 @@ export function renderTradePage(tradeKey) {
     };
   });
 
-  const flushAll = () => list.rows.forEach((r) => r.flush());
+  const flushAll = () => list.rows.forEach((r) => { r.flush(); if (r.fu && r.fu.flush) r.fu.flush(); });
   window.addEventListener("pagehide", flushAll);
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "hidden") flushAll();
@@ -1082,11 +1131,12 @@ export function renderClientPage() {
       const body = el("div", "item-body");
       const lab = el("div", "item-text", text);
       const stamp = el("div", "stamp");
-      body.append(lab, stamp);
+      const note = el("div", "client-note");
+      body.append(lab, stamp, note);
       main.append(mark, body);
       card.appendChild(main);
       host.appendChild(card);
-      return { id, card, mark, stamp, setText(v) { lab.textContent = v; } };
+      return { id, card, mark, stamp, note, setText(v) { lab.textContent = v; } };
     });
 
     return { key: k, group: g, meta, list };
@@ -1113,6 +1163,9 @@ export function renderClientPage() {
           ? "Completed " + fmtDay(rec.doneAt)
           : flagged ? "In progress" : "Open";
         r.stamp.className = "stamp" + (rec.done ? "" : flagged ? " inprog" : " open");
+        const line = flagged ? (rec.followupNote || "") : "";
+        r.note.textContent = line;
+        r.note.style.display = line ? "" : "none";
       });
     });
     refreshProgress();
